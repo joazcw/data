@@ -1,0 +1,110 @@
+# Name of this GitHub Actions workflow
+name: Prompt Format Validator
+
+# Define when this workflow should run
+on:
+  push:
+    paths:
+      - 'data/prompts/**'  # Trigger when any file in data/prompts directory is pushed
+  pull_request:
+    paths:
+      - 'data/prompts/**'  # Trigger when any file in data/prompts directory is modified in a PR
+  workflow_dispatch:       # Allow manual triggering of the workflow from GitHub UI
+
+# Define the jobs that will run as part of this workflow
+jobs:
+  validate-prompts:        # Job ID
+    name: Validate Prompt Format  # Display name of the job
+    runs-on: ubuntu-latest       # Use the latest Ubuntu runner
+    
+    steps:
+      # Step 1: Check out the repository code
+      - name: Checkout code
+        uses: actions/checkout@v3  # GitHub Action to clone the repository
+      
+      # Step 2: Set up Python environment
+      - name: Set up Python
+        uses: actions/setup-python@v4  # GitHub Action to install Python
+        with:
+          python-version: '3.10'      # Specify Python version to use
+      
+      # Step 3: Create the validation script using a heredoc
+      - name: Create validation script
+        run: |
+          cat > validate_prompts.py << 'EOL'  # Write content between EOL markers to the file
+          import os
+          import sys
+          import re
+
+          # Define the required section headers that must appear in all prompt files
+          REQUIRED_SECTIONS = [
+              "#Instruções",           # Instructions section
+              "#Regras",               # Rules section
+              "#Formato de Resposta",  # Response Format section
+              "#Restrições",           # Restrictions section
+              "#Exemplos",             # Examples section
+              "#Critérios de Sucesso", # Success Criteria section
+              "#Observações Adicionais" # Additional Observations section
+          ]
+
+          def validate_prompt_file(file_path):
+              """
+              Validates a single prompt file against required sections.
+              Returns a list of missing sections.
+              """
+              with open(file_path, 'r', encoding='utf-8') as f:
+                  content = f.read()
+              
+              # Check which required sections are missing from the file
+              missing_sections = []
+              for section in REQUIRED_SECTIONS:
+                  if section not in content:
+                      missing_sections.append(section)
+              
+              return missing_sections
+
+          def main():
+              # Path to the reference prompt template
+              reference_path = "data/prompts/pizza_agent.md"
+              
+              # Verify the reference file exists before continuing
+              if not os.path.exists(reference_path):
+                  print(f"Error: Reference file {reference_path} not found!")
+                  sys.exit(1)  # Exit with error code
+              
+              # Directory containing all prompt files to validate
+              prompts_dir = "data/prompts"
+              error_found = False
+              
+              # Loop through each file in the prompts directory
+              for filename in os.listdir(prompts_dir):
+                  file_path = os.path.join(prompts_dir, filename)
+                  
+                  # Only validate markdown files, skip directories and other file types
+                  if os.path.isdir(file_path) or not filename.endswith('.md'):
+                      continue
+                  
+                  print(f"Validating {filename}...")
+                  missing_sections = validate_prompt_file(file_path)
+                  
+                  # Report validation results for this file
+                  if missing_sections:
+                      print(f"❌ {filename} is missing required sections: {', '.join(missing_sections)}")
+                      error_found = True
+                  else:
+                      print(f"✅ {filename} follows the required format")
+              
+              # Final validation result: fail if any errors were found
+              if error_found:
+                  print("\n❌ Validation failed! Some prompt files don't follow the required format.")
+                  sys.exit(1)  # Exit with error code to fail the GitHub Action
+              else:
+                  print("\n✅ All prompt files follow the required format!")
+
+          if __name__ == "__main__":
+              main()
+          EOL
+      
+      # Step 4: Run the validation script
+      - name: Run validation script
+        run: python validate_prompts.py  # Execute the Python script we created above 
