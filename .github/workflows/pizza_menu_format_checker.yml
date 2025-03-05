@@ -1,0 +1,115 @@
+name: Pizza Menu Format Checker
+
+on:
+  push:
+    paths:
+      - '**.md'  # Trigger on any markdown file changes
+  pull_request:
+    paths:
+      - '**.md'  # Trigger on any markdown file changes in PRs
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  check-menu-format:
+    name: Check Menu Format
+    runs-on: ubuntu-latest
+    
+    steps:
+      # Check out the repository code
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      # Set up Python
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      
+      # Create the validation script
+      - name: Create validation script
+        run: |
+          cat > check_menu_format.py << 'EOF'
+          import os
+          import sys
+          
+          # Required sections that should exist in all menu files
+          REQUIRED_SECTIONS = [
+              "## Tamanhos Disponíveis",
+              "## Bordas Recheadas",
+              "## Sabores Tradicionais",
+              "## Sabores Premium",
+              "## Sabores Especiais",
+              "## Doces",
+              "## Combos"
+          ]
+          
+          def check_file_format(filepath):
+              """Check if a file contains all required sections"""
+              try:
+                  with open(filepath, 'r', encoding='utf-8') as file:
+                      content = file.read()
+                  
+                  missing = []
+                  for section in REQUIRED_SECTIONS:
+                      if section not in content:
+                          missing.append(section)
+                  
+                  return missing
+              except Exception as e:
+                  print(f"Error reading file {filepath}: {str(e)}")
+                  return REQUIRED_SECTIONS  # Return all as missing if can't read file
+          
+          # Main file to check (the file being committed/changed)
+          file_to_check = sys.argv[1] if len(sys.argv) > 1 else None
+          
+          if not file_to_check or not file_to_check.endswith('.md'):
+              print("No markdown file specified to check")
+              sys.exit(0)  # Exit without error if no MD file to check
+          
+          print(f"Checking menu format of: {file_to_check}")
+          
+          # Check if the reference file exists
+          reference_file = "data/KB/pizza_kb/cardapio_pizza.md"
+          if not os.path.exists(reference_file):
+              print(f"Warning: Reference file {reference_file} doesn't exist.")
+              print("Will check for required sections without reference.")
+          
+          # Check the file format
+          missing_sections = check_file_format(file_to_check)
+          
+          if missing_sections:
+              print(f"❌ File is missing required menu sections: {', '.join(missing_sections)}")
+              sys.exit(1)  # Exit with error
+          else:
+              print(f"✅ File follows the required menu format with all sections")
+              sys.exit(0)  # Exit successfully
+          EOF
+      
+      # List files changed in this commit/PR
+      - name: Get changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v41
+        
+      # Run check on each changed markdown file
+      - name: Check format of changed files
+        run: |
+          echo "Checking menu format of changed markdown files..."
+          
+          # Flag to track if any errors were found
+          ERROR_FOUND=0
+          
+          # Loop through all changed files
+          for file in ${{ steps.changed-files.outputs.all_changed_files }}; do
+            # Only check markdown files
+            if [[ $file == *.md ]]; then
+              python check_menu_format.py "$file"
+              
+              # If the check fails for this file, set the error flag
+              if [ $? -ne 0 ]; then
+                ERROR_FOUND=1
+              fi
+            fi
+          done
+          
+          # Exit with error if any file failed the check
+          exit $ERROR_FOUND
