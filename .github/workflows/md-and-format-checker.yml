@@ -1,0 +1,119 @@
+name: Markdown Heading Format Checker
+
+on:
+  push:
+    paths:
+      - '**.md'  # Trigger on any markdown file changes
+  pull_request:
+    paths:
+      - '**.md'  # Trigger on any markdown file changes in PRs
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  check-heading-format:
+    name: Check Markdown Heading Format
+    runs-on: ubuntu-latest
+    
+    steps:
+      # Check out the repository code
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      # Set up Python
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      
+      # Create the validation script
+      - name: Create validation script
+        run: |
+          cat > check_heading_format.py << 'EOF'
+          import os
+          import sys
+          import re
+
+          def check_heading_format(filepath):
+              """Check if a markdown file follows proper heading format with space after # and ##"""
+              try:
+                  with open(filepath, 'r', encoding='utf-8') as file:
+                      content = file.readlines()
+                  
+                  errors = []
+                  line_num = 0
+                  
+                  for line in content:
+                      line_num += 1
+                      # Check for incorrect H1 format (# without space)
+                      if line.startswith('#') and not line.startswith('# ') and not line.startswith('##'):
+                          errors.append(f"Line {line_num}: H1 heading without space after #: {line.strip()}")
+                      
+                      # Check for incorrect H2 format (## without space)
+                      if line.startswith('##') and not line.startswith('## '):
+                          errors.append(f"Line {line_num}: H2 heading without space after ##: {line.strip()}")
+                  
+                  # Check if at least one H1 exists
+                  has_h1 = any(re.match(r'^# ', line) for line in content)
+                  if not has_h1:
+                      errors.append("File should have at least one H1 (# ) heading")
+                  
+                  # Check if at least one H2 exists
+                  has_h2 = any(re.match(r'^## ', line) for line in content)
+                  if not has_h2:
+                      errors.append("File should have at least one H2 (## ) heading")
+                      
+                  return errors
+                  
+              except Exception as e:
+                  return [f"Error reading file {filepath}: {str(e)}"]
+          
+          # Main file to check
+          file_to_check = sys.argv[1] if len(sys.argv) > 1 else None
+          
+          if not file_to_check or not file_to_check.endswith('.md'):
+              print("No markdown file specified to check")
+              sys.exit(0)  # Exit without error if no MD file to check
+          
+          print(f"Checking heading format of: {file_to_check}")
+          
+          # Check the file format
+          errors = check_heading_format(file_to_check)
+          
+          if errors:
+              print(f"❌ File has heading format issues:")
+              for error in errors:
+                  print(f"  - {error}")
+              sys.exit(1)  # Exit with error
+          else:
+              print(f"✅ File follows proper heading format with correct # and ## usage")
+              sys.exit(0)  # Exit successfully
+          EOF
+      
+      # List files changed in this commit/PR
+      - name: Get changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v41
+        
+      # Run check on each changed markdown file
+      - name: Check format of changed files
+        run: |
+          echo "Checking heading format of changed markdown files..."
+          
+          # Flag to track if any errors were found
+          ERROR_FOUND=0
+          
+          # Loop through all changed files
+          for file in ${{ steps.changed-files.outputs.all_changed_files }}; do
+            # Only check markdown files
+            if [[ $file == *.md ]]; then
+              python check_heading_format.py "$file"
+              
+              # If the check fails for this file, set the error flag
+              if [ $? -ne 0 ]; then
+                ERROR_FOUND=1
+              fi
+            fi
+          done
+          
+          # Exit with error if any file failed the check
+          exit $ERROR_FOUND
