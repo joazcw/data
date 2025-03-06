@@ -1,4 +1,4 @@
-# Cardápio de Pizzas 
+# Cardápio de Pizzas
 
 ## Tamanhos Disponíveis
 - Pequena (4 fatias) - R$35,00
