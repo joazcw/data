@@ -1,0 +1,125 @@
+name: Markdown Heading Format Checker
+
+# Define quando o workflow será executado
+on:
+  push:
+    paths:
+      - '**.md'  # VERIFICAÇÃO 1: Executa apenas quando arquivos .md são modificados em um push
+  pull_request:
+    paths:
+      - '**.md'  # VERIFICAÇÃO 1: Executa apenas quando arquivos .md são modificados em um PR
+  workflow_dispatch:  # Permite execução manual através da interface do GitHub
+
+# Define os jobs que serão executados
+jobs:
+  check-heading-format:
+    name: Check Markdown Heading Format
+    runs-on: ubuntu-latest  # Executa em um ambiente Ubuntu mais recente
+    
+    steps:
+      # Faz checkout do código do repositório para o runner
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      # Configura o ambiente Python no runner
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'  # Especifica a versão do Python
+      
+      # Cria o script Python que será usado para validar os arquivos markdown
+      - name: Create validation script
+        run: |
+          cat > check_heading_format.py << 'EOF'
+          import os
+          import sys
+          import re
+
+          def check_heading_format(filepath):
+              """Check if a markdown file follows proper heading format with space after # and ##"""
+              try:
+                  # Abre e lê o conteúdo do arquivo
+                  with open(filepath, 'r', encoding='utf-8') as file:
+                      content = file.readlines()
+                  
+                  errors = []  # Lista para armazenar erros encontrados
+                  line_num = 0
+                  
+                  # Verifica linha por linha
+                  for line in content:
+                      line_num += 1
+                      # Verifica títulos H1 incorretos (# sem espaço)
+                      if line.startswith('#') and not line.startswith('# ') and not line.startswith('##'):
+                          errors.append(f"Line {line_num}: H1 heading without space after #: {line.strip()}")
+                      
+                      # Verifica títulos H2 incorretos (## sem espaço)
+                      if line.startswith('##') and not line.startswith('## '):
+                          errors.append(f"Line {line_num}: H2 heading without space after ##: {line.strip()}")
+                  
+                  # Verifica se existe pelo menos um título H1
+                  has_h1 = any(re.match(r'^# ', line) for line in content)
+                  if not has_h1:
+                      errors.append("File should have at least one H1 (# ) heading")
+                  
+                  # Verifica se existe pelo menos um título H2
+                  has_h2 = any(re.match(r'^## ', line) for line in content)
+                  if not has_h2:
+                      errors.append("File should have at least one H2 (## ) heading")
+                      
+                  return errors
+                  
+              except Exception as e:
+                  return [f"Error reading file {filepath}: {str(e)}"]
+          
+          # Obtém o arquivo a ser verificado dos argumentos da linha de comando
+          file_to_check = sys.argv[1] if len(sys.argv) > 1 else None
+          
+          # VERIFICAÇÃO 2: Verifica se o arquivo é .md
+          if not file_to_check or not file_to_check.endswith('.md'):
+              print("No markdown file specified to check")
+              sys.exit(0)  # Sai sem erro se não for um arquivo MD
+          
+          print(f"Checking heading format of: {file_to_check}")
+          
+          # Executa a verificação do formato
+          errors = check_heading_format(file_to_check)
+          
+          # Exibe os erros encontrados ou confirmação de sucesso
+          if errors:
+              print(f"❌ File has heading format issues:")
+              for error in errors:
+                  print(f"  - {error}")
+              sys.exit(1)  # Sai com erro para falhar o workflow
+          else:
+              print(f"✅ File follows proper heading format with correct # and ## usage")
+              sys.exit(0)  # Sai com sucesso
+          EOF
+      
+      # Obtém a lista de arquivos alterados no commit/PR atual
+      - name: Get changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v41  # Usa uma action para detectar arquivos alterados
+        
+      # Executa o script de verificação em cada arquivo markdown alterado
+      - name: Check format of changed files
+        run: |
+          echo "Checking heading format of changed markdown files..."
+          
+          # Flag para rastrear se algum erro foi encontrado
+          ERROR_FOUND=0
+          
+          # Loop por todos os arquivos alterados
+          for file in ${{ steps.changed-files.outputs.all_changed_files }}; do
+            # VERIFICAÇÃO 3: Verifica se o arquivo é .md antes de processá-lo
+            if [[ $file == *.md ]]; then
+              python check_heading_format.py "$file"
+              
+              # Se a verificação falhar para este arquivo, define a flag de erro
+              if [ $? -ne 0 ]; then
+                ERROR_FOUND=1
+              fi
+            fi
+          done
+          
+          # Sai com erro se algum arquivo falhou na verificação
+          exit $ERROR_FOUND
