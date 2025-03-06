@@ -35,5 +35,4 @@ Conter sugestões de pelo menos 2 sabores do cardápio oficial.
 Informar tempo de entrega e combos disponíveis conforme o cardápio.
 
 #Observações Adicionais
-Se possível, sugerir sobremesas ou bebidas para completar o pedido, sempre consultando as opções disponíveis no cardápio.
 Consulte sempre o arquivo de cardápio para garantir informações precisas sobre sabores, preços e opções disponíveis.
